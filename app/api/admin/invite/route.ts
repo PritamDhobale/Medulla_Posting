@@ -33,7 +33,9 @@ export async function POST(req: Request) {
     }
 
     // 2) Invite user (Supabase sends email with set-password link)
-    const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(email)
+    const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "https://medulla-posting.vercel.app"}/auth/set-password`,
+    })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
