@@ -33,7 +33,8 @@ export function Sidebar() {
   // ✅ await logout before navigation (avoids race conditions)
   const handleLogout = async () => {
     await logout()
-    router.push("/")
+    router.replace("/")
+    router.refresh()
   }
 
   return (
