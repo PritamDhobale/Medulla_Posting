@@ -19,22 +19,34 @@ type PlatinumRow = {
   insuranceName?: string
 }
 
-function toIsoDateOnly(d: any): string {
-  if (!d) return ""
-  if (d instanceof Date) return d.toISOString().slice(0, 10)
-  const s = String(d)
+function toIsoDateOnly(d: any): string | null {
+  if (d === null || d === undefined) return null
+  if (d instanceof Date && !isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+
+  const s = String(d).trim()
+  if (!s) return null
+
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+
   const parsed = new Date(s)
   if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10)
-  return s
+
+  return null
 }
 
 function pick(row: any, keys: string[]) {
+  const normalized: Record<string, any> = {}
+  for (const [k, v] of Object.entries(row || {})) {
+    normalized[String(k).trim().toLowerCase()] = v
+  }
+
   for (const k of keys) {
-    if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== "") return row[k]
+    const v = normalized[String(k).trim().toLowerCase()]
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v
   }
   return ""
 }
+
 
 function normText(v: any) {
   return String(v ?? "").trim().toUpperCase()
@@ -161,22 +173,29 @@ export default function ReconciliationPage() {
       if (upErr) throw upErr
 
       // Convert to DB rows
-      const dbRows = rows.map((r) => {
+      const dbRows = rows
+      .map((r) => {
         const clinic = pick(r, ["Clinic", "Clinic Name", "Account Number", "Account"])
-        const date = pick(r, ["Deposit Date", "As of Date", "Date"])
+        const rawDate = pick(r, ["Deposit Date", "As of Date", "Date"])
+        const depositDate = toIsoDateOnly(rawDate)
+
+        // ✅ skip rows that would break DB insert
+        if (!depositDate) return null
+
         const amt = Number(pick(r, ["Amount", "Check Amount", "Amt"])) || 0
-        const chk = pick(r, ["Check Number", "Check #", "Check", "CHK#"])
+        const chk = pick(r, ["Check Number", "Check #", "Check", "CHK#", "Check No"])
         const ins = pick(r, ["Insurance", "Insurance Name", "Payer", "Payer Name"])
 
         return {
           platinum_upload_id: upload.id,
           clinic_name: String(clinic || ""),
-          deposit_date: toIsoDateOnly(date),
+          deposit_date: depositDate, // ✅ valid yyyy-mm-dd only
           check_amount: amt,
           check_number: String(chk || ""),
           insurance_name: String(ins || ""),
         }
       })
+      .filter(Boolean)
 
       await insertInChunks("platinum_items", dbRows, 500)
 

@@ -87,7 +87,7 @@ export default function SetPasswordPage() {
         setError(upErr.message)
         return
       }
-
+      await supabase.auth.refreshSession()
       router.replace("/dashboard")
       router.refresh()
     } finally {

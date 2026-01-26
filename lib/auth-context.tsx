@@ -15,6 +15,7 @@ export interface User {
 interface AuthContextType {
   user: User | null
   isLoading: boolean
+  isReady: boolean // ✅ NEW: tells the app when auth hydration is finished
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
 }
@@ -22,107 +23,105 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 async function fetchProfile(userId: string) {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id,email,role")
-    .eq("id", userId)
-    .single()
-
+  const { data, error } = await supabase.from("profiles").select("id,email,role").eq("id", userId).single()
   if (error) throw error
   return data as { id: string; email: string; role: UserRole }
+}
+
+function toUser(u: { id: string; email: string }, role: UserRole): User {
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.email.split("@")[0],
+    role,
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isReady, setIsReady] = useState(false)
 
-  // Load session on refresh + subscribe to auth state
   useEffect(() => {
-    const hydrate = async () => {
-      const { data } = await supabase.auth.getSession()
-      const sessionUser = data.session?.user
-      if (!sessionUser?.id || !sessionUser.email) return
+    let mounted = true
 
+    const hydrate = async () => {
       try {
+        const { data } = await supabase.auth.getSession()
+        const sessionUser = data.session?.user
+
+        if (!sessionUser?.id || !sessionUser.email) {
+          if (mounted) setUser(null)
+          return
+        }
+
         const profile = await fetchProfile(sessionUser.id)
-        setUser({
-          id: sessionUser.id,
-          email: sessionUser.email,
-          name: sessionUser.email.split("@")[0],
-          role: profile.role,
-        })
+        if (mounted) setUser(toUser({ id: sessionUser.id, email: sessionUser.email }, profile.role))
       } catch (e) {
-        console.error("Profile load error:", e)
-        // If profile doesn't exist, we force logout to avoid weird half-auth state
+        console.error("Auth hydrate error:", e)
         await supabase.auth.signOut()
-        setUser(null)
+        if (mounted) setUser(null)
+      } finally {
+        if (mounted) setIsReady(true) // ✅ hydration finished
       }
     }
 
     hydrate()
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const u = session?.user
-      if (!u?.id || !u.email) {
-        setUser(null)
-        return
-      }
-
       try {
+        const u = session?.user
+        if (!u?.id || !u.email) {
+          setUser(null)
+          setIsReady(true)
+          return
+        }
+
         const profile = await fetchProfile(u.id)
-        setUser({
-          id: u.id,
-          email: u.email,
-          name: u.email.split("@")[0],
-          role: profile.role,
-        })
+        setUser(toUser({ id: u.id, email: u.email }, profile.role))
+        setIsReady(true)
       } catch (e) {
-        console.error("Auth change profile error:", e)
+        console.error("Auth state change error:", e)
         await supabase.auth.signOut()
         setUser(null)
+        setIsReady(true)
       }
     })
 
-    return () => sub.subscription.unsubscribe()
+    return () => {
+      mounted = false
+      sub.subscription.unsubscribe()
+    }
   }, [])
 
   const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      // Sign in only (NO auto-signup)
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
-      if (signInErr) throw signInErr
+      // Sign in only
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw error
 
-      const { data: userData, error: userErr } = await supabase.auth.getUser()
-      if (userErr) throw userErr
-      const u = userData.user
+      const u = data.user
       if (!u?.id || !u.email) throw new Error("Auth user not found")
 
-      // Role is controlled by DB profile only
-      let profile
-      try {
-        profile = await fetchProfile(u.id)
-      } catch {
-        throw new Error("Profile not found for this user. Add a row in profiles table with the correct role.")
-      }
-
-      setUser({
-        id: u.id,
-        email: u.email,
-        name: u.email.split("@")[0],
-        role: profile.role,
-      })
+      const profile = await fetchProfile(u.id)
+      setUser(toUser({ id: u.id, email: u.email }, profile.role))
     } finally {
       setIsLoading(false)
     }
   }
 
   const logout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
+    setIsLoading(true)
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  return <AuthContext.Provider value={{ user, isLoading, login, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, isLoading, isReady, login, logout }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

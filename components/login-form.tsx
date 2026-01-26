@@ -20,7 +20,8 @@ export function LoginForm() {
 
     try {
       await login(email, password)
-      router.push("/dashboard")
+      router.replace("/dashboard")
+      router.refresh()
     } catch (err: any) {
       console.error(err)
       alert(err?.message || "Login failed")
