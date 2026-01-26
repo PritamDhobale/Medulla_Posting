@@ -29,15 +29,23 @@ export function LoginForm() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background">
+    
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+
+      <img
+    src="/sage_healthy_rcm_logo.png"
+    alt="Logo"
+    className="h-12 w-auto object-contain"  // bigger + no background box
+  />
       <Card className="w-full max-w-md">
         <CardHeader>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold">
-              M
-            </div>
-            <h1 className="text-xl font-bold text-foreground">Medulla</h1>
-          </div>
+          <div className="flex items-center gap-2 mb-4">
+  
+  <h1 className="text-xl font-bold text-foreground leading-none">
+    Medulla Posting App
+  </h1>
+</div>
+
           <CardTitle>Bank Reconciliation</CardTitle>
           <CardDescription>Sign in to manage your posting workflow</CardDescription>
         </CardHeader>
@@ -72,9 +80,14 @@ export function LoginForm() {
               />
             </div>
 
-            <Button type="submit" disabled={isLoading || !email || !password} className="w-full">
-              {isLoading ? "Signing in..." : "Sign In"}
-            </Button>
+            <Button
+  type="submit"
+  disabled={isLoading || !email || !password}
+  className="w-full bg-[#738e00] hover:bg-[#667f00] text-white"
+>
+  {isLoading ? "Signing in..." : "Sign In"}
+</Button>
+
           </form>
         </CardContent>
       </Card>

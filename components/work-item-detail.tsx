@@ -211,7 +211,10 @@ export function WorkItemDetail({ item, onClose, onUpdate, currentUser }: WorkIte
             <div className="flex gap-2 pt-6 border-t border-border">
               {editMode ? (
                 <>
-                  <Button onClick={handleSave} className="flex-1">
+                  <Button
+                    onClick={handleSave}
+                    className="flex-1 bg-[#738e00] hover:bg-[#667f00] text-white disabled:opacity-60 disabled:hover:bg-[#738e00]"
+                  >
                     Save Changes
                   </Button>
                   <Button
@@ -226,7 +229,10 @@ export function WorkItemDetail({ item, onClose, onUpdate, currentUser }: WorkIte
                   </Button>
                 </>
               ) : (
-                <Button onClick={() => setEditMode(true)} className="w-full">
+                <Button
+                  onClick={() => setEditMode(true)}
+                  className="w-full bg-[#738e00] hover:bg-[#667f00] text-white disabled:opacity-60 disabled:hover:bg-[#738e00]"
+                >
                   Edit Item
                 </Button>
               )}

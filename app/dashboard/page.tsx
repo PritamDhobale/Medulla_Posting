@@ -78,7 +78,12 @@ export default function Dashboard() {
             <CardDescription>Compare Platinum reports with bank reconciliation</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => router.push("/reconciliation")}>Open Reconciliation</Button>
+            <Button
+              onClick={() => router.push("/reconciliation")}
+              className="bg-[#738e00] hover:bg-[#667f00] text-white disabled:opacity-60 disabled:hover:bg-[#738e00]"
+            >
+              Open Reconciliation
+            </Button>
           </CardContent>
         </Card>
       )}

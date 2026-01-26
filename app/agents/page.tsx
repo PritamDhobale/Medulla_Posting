@@ -96,7 +96,11 @@ export default function AgentsPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <Button onClick={inviteAgent} disabled={loading || !email.trim()}>
+          <Button
+            onClick={inviteAgent}
+            disabled={loading || !email.trim()}
+            className="bg-[#738e00] hover:bg-[#667f00] text-white disabled:opacity-60 disabled:hover:bg-[#738e00]"
+          >
             {loading ? "Sending..." : "Send Invite"}
           </Button>
         </CardContent>

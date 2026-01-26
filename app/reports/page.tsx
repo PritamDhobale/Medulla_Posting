@@ -202,7 +202,10 @@ export default function ReportsPage() {
                 </table>
               </div>
 
-              <Button onClick={exportProductionCSV} className="w-full">
+              <Button
+                onClick={exportProductionCSV}
+                className="w-full bg-[#738e00] hover:bg-[#667f00] text-white disabled:opacity-60 disabled:hover:bg-[#738e00]"
+              >
                 <Download className="w-4 h-4 mr-2" />
                 Export as CSV
               </Button>
@@ -301,7 +304,10 @@ export default function ReportsPage() {
                 </table>
               </div>
 
-              <Button onClick={exportClinicCSV} className="w-full">
+              <Button
+                onClick={exportClinicCSV}
+                className="w-full bg-[#738e00] hover:bg-[#667f00] text-white disabled:opacity-60 disabled:hover:bg-[#738e00]"
+              >
                 <Download className="w-4 h-4 mr-2" />
                 Export as CSV
               </Button>

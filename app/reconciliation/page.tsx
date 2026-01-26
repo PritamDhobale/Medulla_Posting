@@ -391,7 +391,10 @@ export default function ReconciliationPage() {
                   </div>
 
                   {!reconciliationDone && (
-                    <Button onClick={handleRunReconciliation} className="w-full">
+                    <Button
+                      onClick={handleRunReconciliation}
+                      className="w-full bg-[#738e00] hover:bg-[#667f00] text-white disabled:opacity-60 disabled:hover:bg-[#738e00]"
+                    >
                       Run Reconciliation
                     </Button>
                   )}
