@@ -117,37 +117,54 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const { data, error } = await supabase
-      .from("work_items")
-      .select(
-        `
-        id,
-        upload_id,
-        clinic_name,
-        deposit_date,
-        transaction_type,
-        check_amount,
-        original_bank_description,
-        insurance_name,
-        check_number,
-        status,
-        notes,
-        source_sheet,
-        source_sheet_full_name,
-        state,
-        last_updated_at,
-        uploads:uploads!work_items_upload_id_fkey(file_name),
-        updater:profiles!work_items_last_updated_by_fkey(email)
-      `,
-      )
-      .order("deposit_date", { ascending: false })
+    const pageSize = 1000
+    let from = 0
+    let all: any[] = []
 
-    if (error) {
-      console.error("refreshWorkItems error:", error)
-      return
+    while (true) {
+      const to = from + pageSize - 1
+
+      const { data, error } = await supabase
+        .from("work_items")
+        .select(
+          `
+          id,
+          upload_id,
+          clinic_name,
+          deposit_date,
+          transaction_type,
+          check_amount,
+          original_bank_description,
+          insurance_name,
+          check_number,
+          status,
+          notes,
+          source_sheet,
+          source_sheet_full_name,
+          state,
+          last_updated_at,
+          uploads:uploads!work_items_upload_id_fkey(file_name),
+          updater:profiles!work_items_last_updated_by_fkey(email)
+        `,
+        )
+        .order("deposit_date", { ascending: false })
+        .range(from, to)
+
+      if (error) {
+        console.error("refreshWorkItems error:", error)
+        return
+      }
+
+      const batch = data || []
+      all = all.concat(batch)
+
+      // stop when last page is smaller than pageSize
+      if (batch.length < pageSize) break
+
+      from += pageSize
     }
 
-    setWorkItems((data || []).map(mapDbToWorkItem))
+    setWorkItems(all.map(mapDbToWorkItem))
   }
 
   useEffect(() => {
@@ -185,27 +202,52 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
 
     // 2) insert work_items
-    const dbRows = safeItems.map((i) => ({
-      upload_id: upload.id,
-      clinic_name: i.clinicName,
-      state: i.state || null,
-      deposit_date: i.depositDate, // already YYYY-MM-DD
-      transaction_type: i.transactionType || null,
-      check_amount: i.checkAmount ?? 0,
-      original_bank_description: i.originalBankDescription || null,
-      insurance_name: i.insuranceCompany || null,
-      check_number: i.checkNumber || null,
-      source_sheet: i.sourceSheet || null,
-      source_sheet_full_name: i.sourceSheetFullName || null,
-      status: i.status || "Pending",
-      notes: i.notes || null,
+    const dbRows = safeItems.map((i) => {
+      const dedupeKey = [
+        i.clinicName,
+        i.depositDate,
+        i.checkNumber,
+        i.checkAmount,
+        i.transactionType,
+        i.originalBankDescription,
+        i.sourceSheet,
+      ]
+        .join("|")
+        .toLowerCase()
+        .trim()
 
-      // IMPORTANT: to make agent see their own uploaded items immediately
-      last_updated_by: user.id,
-      last_updated_at: nowIso,
-    }))
+      return {
+        upload_id: upload.id,
+        clinic_name: i.clinicName,
+        state: i.state || null,
+        deposit_date: i.depositDate,
+        transaction_type: i.transactionType || null,
+        check_amount: i.checkAmount ?? 0,
+        original_bank_description: i.originalBankDescription || null,
+        insurance_name: i.insuranceCompany || null,
+        check_number: i.checkNumber || null,
+        source_sheet: i.sourceSheet || null,
+        source_sheet_full_name: i.sourceSheetFullName || null,
+        status: i.status || "Pending",
+        notes: i.notes || null,
 
-    await insertInChunks("work_items", dbRows, 500)
+        dedupe_key: dedupeKey,
+
+        last_updated_by: user.id,
+        last_updated_at: nowIso,
+      }
+    })
+
+    const chunkSize = 500
+    for (let i = 0; i < dbRows.length; i += chunkSize) {
+      const chunk = dbRows.slice(i, i + chunkSize)
+
+      const { error } = await supabase
+        .from("work_items")
+        .upsert(chunk, { onConflict: "dedupe_key", ignoreDuplicates: true })
+
+      if (error) throw error
+    }
 
     // 3) update local uploadSessions (optional display use later)
     setUploadSessions((prev) => [

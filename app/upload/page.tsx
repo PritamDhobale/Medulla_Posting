@@ -79,6 +79,7 @@ export default function UploadPage() {
   const [selectedSheets, setSelectedSheets] = useState<string[]>([])
   const [previewCounts, setPreviewCounts] = useState<Record<string, number>>({})
   const { createUploadAndWorkItems } = useData()
+  const [creating, setCreating] = useState(false)
   const router = useRouter()
 
   const handleFileSelect = async (file: File) => {
@@ -112,105 +113,89 @@ export default function UploadPage() {
 
   const handleCreateWorkItems = async () => {
     if (!fileBuffer) return
+    if (creating) return // ✅ block double-click
 
-    const wb = XLSX.read(fileBuffer, { type: "array", cellDates: true })
+    setCreating(true)
 
-    const allItems = selectedSheets.flatMap((sheetName) => {
-      const ws = wb.Sheets[sheetName]
-      if (!ws) return []
-
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" })
-
-      // Keep this (optional)
-      setPreviewCounts((p) => ({ ...p, [sheetName]: rows.length }))
-
-      const mapped = rows
-        .map((r) => {
-          // ✅ Updated keys for Medulla format
-          // ✅ Clinic/Account name (VCC sheets often have blank header -> __EMPTY)
-          const clinic = pick(r, [
-            "Account Name",
-            "Clinic Name",
-            "Clinic",
-            "Account",
-            "Account Number",
-            "__EMPTY",      // VCC clinic column
-            "__EMPTY_1",    // backup
-          ])
-
-          // ✅ Deposit date (VCC uses "As of date" sometimes - your pick() normalizes case)
-          const deposit = pick(r, ["As of Date", "As of date", "Deposit Date", "Date"])
-
-          // ✅ Transaction type
-          const txn = pick(r, ["Transaction", "Transaction Type", "Type"])
-
-          // ✅ Amount
-          const amt = Number(pick(r, ["Amount", "Check Amount", "Amt"])) || 0
-
-          // ✅ Description
-          const desc = String(pick(r, ["Description", "Original Bank Details", "Details"]) || "")
-
-          // ✅ Payer (VCC uses Payor)
-          const payer = String(pick(r, ["Payer", "Payor", "Insurance", "Insurance Name", "Payer Name"]) || "").trim()
-
-          // ✅ Payment details
-          const paymentDetails = String(pick(r, ["Payment Details", "TRN", "Details"]) || "").trim()
-
-          // ✅ Check/VCC number (VCC sheets have "VCC #")
-          const vccNum = String(pick(r, ["VCC #", "VCC#", "VCC Number", "Check Number", "Check #", "Check"]) || "").trim()
-
-          const depositIso = toIsoDateOnly(deposit)
-          const clinicName = String(clinic || "").trim()
-
-          // ✅ skip junk rows (headers/blank lines)
-          if (!clinicName) return null
-          if (!depositIso) return null
-
-          // ✅ Insurance + Check extraction (Medulla format)
-          let insurance_name = payer || ""
-          let check_number = vccNum || ""
-
-          // Try TRN pattern first: TRN*1*<check_number>*
-          const trnMatch = (paymentDetails || desc).match(/TRN\*1\*([^*]+)\*/i)
-          if (!check_number && trnMatch?.[1]) check_number = trnMatch[1].trim()
-
-          // Fallback parsing
-          if (!insurance_name || !check_number) {
-            const parsed = parseInsuranceAndCheck(desc)
-            if (!insurance_name) insurance_name = parsed.insurance_name
-            if (!check_number) check_number = parsed.check_number
-          }
-
-          return {
-            clinicName,
-            depositDate: depositIso,
-            transactionType: String(txn || ""),
-            checkAmount: amt,
-            originalBankDescription: desc,
-            insuranceCompany: insurance_name,
-            checkNumber: check_number,
-            status: "Pending" as const,
-            notes: "",
-            sourceSheet: sheetName,
-            sourceFileName: fileName,
-            sourceSheetFullName: availableSheets.find((s) => s.name === sheetName)?.displayName || sheetName,
-            state: String(pick(r, ["State"]) || ""),
-            uploadId: undefined,
-            lastTouchedBy: undefined,
-            lastTouchedAt: undefined,
-          }
-        })
-        .filter(Boolean)
-
-      return mapped as any
-    })
-
-    // ✅ Insert into Supabase (uploads + work_items)
     try {
+      const wb = XLSX.read(fileBuffer, { type: "array", cellDates: true })
+
+      const allItems = selectedSheets.flatMap((sheetName) => {
+        const ws = wb.Sheets[sheetName]
+        if (!ws) return []
+
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" })
+
+        setPreviewCounts((p) => ({ ...p, [sheetName]: rows.length }))
+
+        const mapped = rows
+          .map((r) => {
+            const clinic = pick(r, [
+              "Account Name",
+              "Clinic Name",
+              "Clinic",
+              "Account",
+              "Account Number",
+              "__EMPTY",
+              "__EMPTY_1",
+            ])
+
+            const deposit = pick(r, ["As of Date", "As of date", "Deposit Date", "Date"])
+            const txn = pick(r, ["Transaction", "Transaction Type", "Type"])
+            const amt = Number(pick(r, ["Amount", "Check Amount", "Amt"])) || 0
+
+            const desc = String(pick(r, ["Description", "Original Bank Details", "Details"]) || "")
+            const payer = String(pick(r, ["Payer", "Payor", "Insurance", "Insurance Name", "Payer Name"]) || "").trim()
+            const paymentDetails = String(pick(r, ["Payment Details", "TRN", "Details"]) || "").trim()
+
+            const vccNum = String(
+              pick(r, ["VCC #", "VCC#", "VCC Number", "Check Number", "Check #", "Check"]) || "",
+            ).trim()
+
+            const depositIso = toIsoDateOnly(deposit)
+            const clinicName = String(clinic || "").trim()
+
+            if (!clinicName) return null
+            if (!depositIso) return null
+
+            let insurance_name = payer || ""
+            let check_number = vccNum || ""
+
+            const trnMatch = (paymentDetails || desc).match(/TRN\*1\*([^*]+)\*/i)
+            if (!check_number && trnMatch?.[1]) check_number = trnMatch[1].trim()
+
+            if (!insurance_name || !check_number) {
+              const parsed = parseInsuranceAndCheck(desc)
+              if (!insurance_name) insurance_name = parsed.insurance_name
+              if (!check_number) check_number = parsed.check_number
+            }
+
+            return {
+              clinicName,
+              depositDate: depositIso,
+              transactionType: String(txn || ""),
+              checkAmount: amt,
+              originalBankDescription: desc,
+              insuranceCompany: insurance_name,
+              checkNumber: check_number,
+              status: "Pending" as const,
+              notes: "",
+              sourceSheet: sheetName,
+              sourceFileName: fileName,
+              sourceSheetFullName: availableSheets.find((s) => s.name === sheetName)?.displayName || sheetName,
+              state: String(pick(r, ["State"]) || ""),
+              uploadId: undefined,
+              lastTouchedBy: undefined,
+              lastTouchedAt: undefined,
+            }
+          })
+          .filter(Boolean)
+
+        return mapped as any
+      })
+
       if (!allItems.length) {
-        throw new Error(
-          "No valid rows found in selected sheets. Check headers (Account/Clinic + As of Date) and try again."
-        )
+        throw new Error("No valid rows found in selected sheets. Check headers (Account/Clinic + As of Date) and try again.")
       }
 
       await createUploadAndWorkItems(fileName, allItems)
@@ -218,6 +203,8 @@ export default function UploadPage() {
     } catch (e: any) {
       console.error("Create work items failed:", e)
       alert(e?.message || JSON.stringify(e))
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -307,7 +294,9 @@ export default function UploadPage() {
               <Button onClick={() => setStep("sheets")} variant="outline">
                 Back
               </Button>
-              <Button onClick={handleCreateWorkItems}>Create Work Items</Button>
+              <Button onClick={handleCreateWorkItems} disabled={creating}>
+                {creating ? "Creating..." : "Create Work Items"}
+              </Button>
             </div>
           </CardContent>
         </Card>
