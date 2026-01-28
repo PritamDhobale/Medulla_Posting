@@ -87,10 +87,22 @@ export default function SetPasswordPage() {
         setError(upErr.message)
         return
       }
+
       await supabase.auth.refreshSession()
+
+      // ✅ stop spinner BEFORE navigation (prevents “stuck saving” UI)
+      setLoading(false)
+
+      // ✅ soft navigation
       router.replace("/dashboard")
       router.refresh()
-    } finally {
+
+      // ✅ hard fallback (if soft navigation is blocked for any reason)
+      setTimeout(() => {
+        window.location.assign("/dashboard")
+      }, 600)
+    } catch (e: any) {
+      setError(e?.message || "Failed to set password.")
       setLoading(false)
     }
   }

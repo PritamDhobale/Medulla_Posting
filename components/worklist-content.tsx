@@ -38,22 +38,46 @@ export function WorklistContent() {
   const clinics = Array.from(new Set(workItems.map((item) => item.clinicName)))
   const statuses = Array.from(new Set(workItems.map((item) => item.status)))
 
+  const normalizeDateOnly = (v: any) => String(v || "").slice(0, 10)
+
+  const toMs = (v: any) => {
+    const d = normalizeDateOnly(v)
+    const t = Date.parse(d)
+    return Number.isNaN(t) ? null : t
+  }
+
   // Filter and sort
   const filteredItems = useMemo(() => {
     return workItems
       .filter((item) => {
         if (filters.clinic && item.clinicName !== filters.clinic) return false
         if (filters.status && item.status !== filters.status) return false
-        if (filters.dateFrom && item.depositDate < filters.dateFrom) return false
-        if (filters.dateTo && item.depositDate > filters.dateTo) return false
+        const itemMs = toMs(item.depositDate)
+        const fromMs = filters.dateFrom ? toMs(filters.dateFrom) : null
+        const toMsVal = filters.dateTo ? toMs(filters.dateTo) : null
+
+        if (fromMs !== null && itemMs !== null && itemMs < fromMs) return false
+        if (toMsVal !== null && itemMs !== null && itemMs > toMsVal) return false
+
         if (filters.searchTerm) {
-          const search = filters.searchTerm.toLowerCase()
-          return (
-            item.insuranceCompany.toLowerCase().includes(search) ||
-            item.checkNumber.toLowerCase().includes(search) ||
-            item.clinicName.toLowerCase().includes(search)
-          )
+          const search = filters.searchTerm.toLowerCase().trim()
+
+          const haystack = [
+            item.insuranceCompany,
+            item.checkNumber,
+            item.clinicName,
+            item.originalBankDescription,
+            item.transactionType,
+            item.notes,
+            item.status,
+            item.sourceSheet,
+          ]
+            .map((x) => String(x || "").toLowerCase())
+            .join(" ")
+
+          if (!haystack.includes(search)) return false
         }
+
         return true
       })
       .sort((a, b) => {

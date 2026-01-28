@@ -94,7 +94,9 @@ export default function UploadPage() {
     setAvailableSheets(sheets)
 
     // auto-detect "deposit" sheets: (01.15 style) OR includes "Daily Deposit"
-    const deposit = wb.SheetNames.filter((s) => /^\d{2}\.\d{2}/.test(s) || /daily deposit/i.test(s))
+    const deposit = wb.SheetNames.filter(
+      (s) => /^\d{2}\.\d{2}/.test(s) || /daily deposit/i.test(s) || /vcc/i.test(s)
+    )
     setSelectedSheets(deposit.length ? deposit : wb.SheetNames.slice(0, Math.min(4, wb.SheetNames.length)))
 
     setStep("sheets")
@@ -125,14 +127,37 @@ export default function UploadPage() {
       const mapped = rows
         .map((r) => {
           // ✅ Updated keys for Medulla format
-          const clinic = pick(r, ["Account Name", "Account Number", "Clinic Name", "Clinic", "Account"])
-          const deposit = pick(r, ["As of Date", "Deposit Date", "Date"])
+          // ✅ Clinic/Account name (VCC sheets often have blank header -> __EMPTY)
+          const clinic = pick(r, [
+            "Account Name",
+            "Clinic Name",
+            "Clinic",
+            "Account",
+            "Account Number",
+            "__EMPTY",      // VCC clinic column
+            "__EMPTY_1",    // backup
+          ])
+
+          // ✅ Deposit date (VCC uses "As of date" sometimes - your pick() normalizes case)
+          const deposit = pick(r, ["As of Date", "As of date", "Deposit Date", "Date"])
+
+          // ✅ Transaction type
           const txn = pick(r, ["Transaction", "Transaction Type", "Type"])
+
+          // ✅ Amount
           const amt = Number(pick(r, ["Amount", "Check Amount", "Amt"])) || 0
 
+          // ✅ Description
           const desc = String(pick(r, ["Description", "Original Bank Details", "Details"]) || "")
-          const payer = String(pick(r, ["Payer", "Insurance", "Insurance Name", "Payer Name"]) || "").trim()
+
+          // ✅ Payer (VCC uses Payor)
+          const payer = String(pick(r, ["Payer", "Payor", "Insurance", "Insurance Name", "Payer Name"]) || "").trim()
+
+          // ✅ Payment details
           const paymentDetails = String(pick(r, ["Payment Details", "TRN", "Details"]) || "").trim()
+
+          // ✅ Check/VCC number (VCC sheets have "VCC #")
+          const vccNum = String(pick(r, ["VCC #", "VCC#", "VCC Number", "Check Number", "Check #", "Check"]) || "").trim()
 
           const depositIso = toIsoDateOnly(deposit)
           const clinicName = String(clinic || "").trim()
@@ -143,13 +168,13 @@ export default function UploadPage() {
 
           // ✅ Insurance + Check extraction (Medulla format)
           let insurance_name = payer || ""
-          let check_number = ""
+          let check_number = vccNum || ""
 
           // Try TRN pattern first: TRN*1*<check_number>*
           const trnMatch = (paymentDetails || desc).match(/TRN\*1\*([^*]+)\*/i)
-          if (trnMatch?.[1]) check_number = trnMatch[1].trim()
+          if (!check_number && trnMatch?.[1]) check_number = trnMatch[1].trim()
 
-          // Fallback: use your old parsing if payer not present
+          // Fallback parsing
           if (!insurance_name || !check_number) {
             const parsed = parseInsuranceAndCheck(desc)
             if (!insurance_name) insurance_name = parsed.insurance_name
@@ -182,6 +207,12 @@ export default function UploadPage() {
 
     // ✅ Insert into Supabase (uploads + work_items)
     try {
+      if (!allItems.length) {
+        throw new Error(
+          "No valid rows found in selected sheets. Check headers (Account/Clinic + As of Date) and try again."
+        )
+      }
+
       await createUploadAndWorkItems(fileName, allItems)
       setStep("success")
     } catch (e: any) {

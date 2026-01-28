@@ -12,7 +12,8 @@ export default function Home() {
 
   useEffect(() => {
     if (user && pathname === "/") {
-      router.push("/dashboard")
+      router.replace("/dashboard")
+      router.refresh()
     }
   }, [user, router, pathname])
 
